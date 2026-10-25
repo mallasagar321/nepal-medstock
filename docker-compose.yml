@@ -1,0 +1,11 @@
+services:
+  medstock:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      API_KEY: change-me
+    volumes:
+      - medstock-data:/data
+volumes:
+  medstock-data:

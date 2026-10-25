@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Medicine Stock Dashboard - Nepal Health Posts</title>
+<style>
+  :root { --bg:#f5f7fa; --card:#fff; --text:#1c2b39; --muted:#5f6f7f; --line:#e1e6ec;
+          --accent:#1f6f8b; --low:#fdecea; --lowtext:#b3261e; --ok:#e8f5e9; --oktext:#1b5e20; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12181f; --card:#1b242d; --text:#e8eef4; --muted:#9fb0c0; --line:#2c3a47;
+            --accent:#4fb3d1; --low:#3a1d1b; --lowtext:#ff8a80; --ok:#1b3320; --oktext:#9be7a5; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: Arial, Helvetica, sans-serif; background:var(--bg); color:var(--text); }
+  header { background:var(--accent); color:#fff; padding:18px 24px; }
+  header h1 { margin:0; font-size:1.3rem; }
+  header p { margin:4px 0 0; font-size:.9rem; opacity:.9; }
+  main { max-width:1000px; margin:0 auto; padding:20px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px 16px; }
+  .card .num { font-size:1.8rem; font-weight:bold; }
+  .card .label { color:var(--muted); font-size:.85rem; }
+  .card.low .num { color:var(--lowtext); }
+  section { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:16px; margin-bottom:20px; }
+  section h2 { margin:0 0 12px; font-size:1.05rem; }
+  .toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+  .scroll { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:.92rem; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); }
+  th { color:var(--muted); font-weight:600; font-size:.8rem; text-transform:uppercase; }
+  tr.low td { background:var(--low); }
+  .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:.78rem; font-weight:bold; }
+  .badge.low { background:var(--low); color:var(--lowtext); border:1px solid var(--lowtext); }
+  .badge.ok { background:var(--ok); color:var(--oktext); }
+  input, select, button { font:inherit; padding:7px 9px; border:1px solid var(--line); border-radius:6px;
+                          background:var(--card); color:var(--text); }
+  button { background:var(--accent); color:#fff; border:none; cursor:pointer; }
+  button.small { padding:4px 10px; font-size:.82rem; }
+  button.secondary { background:transparent; color:var(--accent); border:1px solid var(--accent); }
+  .forms { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; }
+  form { display:flex; flex-direction:column; gap:8px; }
+  #msg { margin:0 0 12px; padding:8px 12px; border-radius:6px; display:none; font-size:.9rem; }
+  #msg.ok { display:block; background:var(--ok); color:var(--oktext); }
+  #msg.err { display:block; background:var(--low); color:var(--lowtext); }
+  .empty { color:var(--muted); padding:12px 0; }
+  footer { text-align:center; color:var(--muted); font-size:.8rem; padding:10px 0 24px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Nepal Health Post Medicine Stock Dashboard</h1>
+  <p>Spot medicine shortages in remote health posts before they run out.</p>
+</header>
+<main>
+  <div id="msg"></div>
+
+  <div class="cards">
+    <div class="card"><div class="num" id="cPosts">0</div><div class="label">Health posts</div></div>
+    <div class="card"><div class="num" id="cMeds">0</div><div class="label">Medicines tracked</div></div>
+    <div class="card low"><div class="num" id="cLow">0</div><div class="label">Low stock alerts</div></div>
+  </div>
+
+  <section>
+    <h2>Stock overview</h2>
+    <div class="toolbar">
+      <label><input type="checkbox" id="onlyLow"> Show low stock only</label>
+      <button class="secondary small" id="refresh" type="button">Refresh</button>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr>
+          <th>District</th><th>Health post</th><th>Medicine</th><th>Nepali name</th>
+          <th>Quantity</th><th>Threshold</th><th>Status</th><th>Updated</th><th></th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="empty" style="display:none">No data yet. Add a health post and a medicine below.</div>
+  </section>
+
+  <section>
+    <h2>Update data (health workers)</h2>
+    <p style="margin-top:0;color:var(--muted);font-size:.88rem">
+      Changing data needs the API key. Viewing does not.
+    </p>
+    <div class="toolbar">
+      <label>API key <input type="password" id="apiKey" placeholder="e.g. my-secret"></label>
+    </div>
+    <div class="forms">
+      <form id="postForm">
+        <strong>Add health post</strong>
+        <input id="postName" placeholder="Health post name" required>
+        <input id="postDistrict" placeholder="District" required>
+        <button type="submit">Add health post</button>
+      </form>
+      <form id="medForm">
+        <strong>Add medicine</strong>
+        <select id="medPost" required></select>
+        <input id="medName" placeholder="Medicine name" required>
+        <input id="medNameNe" placeholder="Nepali name (optional)">
+        <input id="medQty" type="number" min="0" placeholder="Quantity" required>
+        <input id="medThreshold" type="number" min="0" placeholder="Low-stock threshold (default 20)">
+        <button type="submit">Add medicine</button>
+      </form>
+    </div>
+  </section>
+</main>
+
+<script>
+  var data = [];
+
+  function $(id) { return document.getElementById(id); }
+
+  function show(text, ok) {
+    var m = $("msg");
+    m.textContent = text;
+    m.className = ok ? "ok" : "err";
+    setTimeout(function () { m.className = ""; m.textContent = ""; }, 5000);
+  }
+
+  function cell(tr, text) {
+    var td = document.createElement("td");
+    td.textContent = text == null ? "" : text;
+    tr.appendChild(td);
+    return td;
+  }
+
+  function render() {
+    var onlyLow = $("onlyLow").checked;
+    var tbody = $("rows");
+    tbody.textContent = "";
+    var posts = {}, meds = 0, low = 0, shown = 0;
+
+    data.forEach(function (r) {
+      posts[r.post_id] = r.post;
+      if (r.medicine_id == null) { return; }
+      meds += 1;
+      var isLow = r.quantity < r.threshold;
+      if (isLow) { low += 1; }
+      if (onlyLow && !isLow) { return; }
+      shown += 1;
+
+      var tr = document.createElement("tr");
+      if (isLow) { tr.className = "low"; }
+      cell(tr, r.district);
+      cell(tr, r.post);
+      cell(tr, r.name);
+      cell(tr, r.name_ne);
+      cell(tr, r.quantity);
+      cell(tr, r.threshold);
+      var st = cell(tr, "");
+      var b = document.createElement("span");
+      b.className = "badge " + (isLow ? "low" : "ok");
+      b.textContent = isLow ? "LOW" : "OK";
+      st.appendChild(b);
+      cell(tr, (r.updated_at || "").replace("T", " ").slice(0, 16));
+      var act = cell(tr, "");
+      var btn = document.createElement("button");
+      btn.className = "small";
+      btn.type = "button";
+      btn.textContent = "Set quantity";
+      btn.onclick = function () { setQuantity(r); };
+      act.appendChild(btn);
+      tbody.appendChild(tr);
+    });
+
+    $("cPosts").textContent = Object.keys(posts).length;
+    $("cMeds").textContent = meds;
+    $("cLow").textContent = low;
+    $("empty").style.display = shown === 0 ? "block" : "none";
+
+    var sel = $("medPost");
+    var keep = sel.value;
+    sel.textContent = "";
+    Object.keys(posts).forEach(function (id) {
+      var o = document.createElement("option");
+      o.value = id;
+      o.textContent = posts[id];
+      sel.appendChild(o);
+    });
+    if (keep) { sel.value = keep; }
+  }
+
+  function load() {
+    return fetch("/stock").then(function (r) { return r.json(); }).then(function (rows) {
+      data = rows;
+      render();
+    }).catch(function () { show("Could not load stock data.", false); });
+  }
+
+  function send(method, url, body, okText) {
+    var key = $("apiKey").value;
+    return fetch(url, {
+      method: method,
+      headers: { "Content-Type": "application/json", "X-API-Key": key },
+      body: JSON.stringify(body)
+    }).then(function (r) {
+      return r.json().then(function (j) { return { status: r.status, body: j }; });
+    }).then(function (res) {
+      if (res.status >= 200 && res.status < 300) {
+        show(okText, true);
+        return load();
+      }
+      show(res.status === 401 ? "Wrong or missing API key." : (res.body.error || "Request failed."), false);
+    }).catch(function () { show("Network error.", false); });
+  }
+
+  function setQuantity(r) {
+    var v = prompt("New quantity for " + r.name + " at " + r.post + ":", r.quantity);
+    if (v === null) { return; }
+    var n = parseInt(v, 10);
+    if (isNaN(n) || n < 0) { show("Enter a whole number, 0 or more.", false); return; }
+    send("PUT", "/medicines/" + r.medicine_id, { quantity: n }, "Stock updated.");
+  }
+
+  $("postForm").onsubmit = function (e) {
+    e.preventDefault();
+    send("POST", "/posts", { name: $("postName").value, district: $("postDistrict").value },
+         "Health post added.").then(function () { $("postForm").reset(); });
+  };
+
+  $("medForm").onsubmit = function (e) {
+    e.preventDefault();
+    var body = { name: $("medName").value, quantity: parseInt($("medQty").value, 10) };
+    if ($("medNameNe").value) { body.name_ne = $("medNameNe").value; }
+    if ($("medThreshold").value !== "") { body.threshold = parseInt($("medThreshold").value, 10); }
+    send("POST", "/posts/" + $("medPost").value + "/medicines", body, "Medicine added.")
+      .then(function () { $("medForm").reset(); });
+  };
+
+  $("onlyLow").onchange = render;
+  $("refresh").onclick = load;
+  load();
+</script>
+</body>
+</html>
